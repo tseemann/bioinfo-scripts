@@ -12,6 +12,7 @@ Collection of bioinformatics utility scripts, mostly written in Bioperl
 
 ## Other scripts
 * `gene-puller.pl` - extract and align amplicons from sets of contigs
+* `genbank2krakenlib.pl` - Convert Genbank file(s) into Kraken FASTA files
 
 ## Advice
 Some of these scripts were written as early as 2004. Use them to get out of
