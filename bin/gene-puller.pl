@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use strict;
 use warnings;
 use Data::Dumper;
@@ -7,7 +7,7 @@ use Bio::SearchIO;
 use File::Spec;
 use Fatal;
 
-my(@Options, $verbose, $gfn, $dir, $evalue, $tophit);
+my(@Options, $verbose, $gfn, $dir, $evalue, $tophit, $origname, $cpus);
 setOptions();
 
 
@@ -21,12 +21,18 @@ $gfn or err("Please supply a input gene FASTA file --genes");
 msg("Gene file: $gfn");
 
 my %cfn;
-my $LCP = longest_common_prefix(@ARGV);
+#my $LCP = longest_common_prefix(@ARGV);
+my $LCS = lcs(@ARGV);
+my $LCP = lcp(@ARGV);
+msg("LCP =", $LCP);
+msg("LCS =", $LCS);
+
 for my $cfn (@ARGV) {
   if (-r $cfn) {
 #    my $id = id_from_path($cfn);
     my $id = $cfn;
-    $id =~ s/$LCP//;
+#    $id =~ s/$LCP//;
+    $id =~ s/$LCS$// unless $origname;
     $id =~ s{/}{_}g;
     msg("Contig file #".(scalar keys %cfn)." aka '$id': $cfn");
     $cfn{$cfn} = $id;
@@ -38,7 +44,7 @@ for my $cfn (@ARGV) {
 scalar(keys %cfn) or err("Not enough valid contig files were supplied.");
 #print STDERR Dumper(\%cfn);
 
-for my $exe (qw(blastall fastacmd formatdb date muscle)) {
+for my $exe (qw(blastall fastacmd formatdb date muscle clustalo)) {
   require_exe($exe) ? msg("Found '$exe' - ok") : err("Can't find '$exe' in \$PATH");
 }
 
@@ -90,7 +96,8 @@ DATABASE:
   }
   # Align them
   msg("Aligning all the $id sequences");
-  my $cmd = "muscle -in '$dir/$id.fasta' -out '$dir/$id.aln' -clwstrict -quiet -loga '$dir/muscle.log'";
+#  my $cmd = "muscle -in '$dir/$id.fasta' -out '$dir/$id.aln' -clwstrict -quiet -loga '$dir/muscle.log'";
+  my $cmd = "clustalo --output-order=tree-order --guidetree-out='$dir/$id.tree'--auto -i '$dir/$id.fasta' -o '$dir/$id.aln' --outfmt=clustal --threads=$cpus -l '$dir/muscle.log'";
   run_cmd($cmd);
 }
 
@@ -106,12 +113,35 @@ msg("Done! Check the '$dir' folder for your results.");
 
 #-------------------------------------------------------------------------
 
+sub lcp {
+  (join("\0", @_) =~ /^ ([^\0]*) [^\0]* (?:\0 \1 [^\0]*)* $/sx)[0];
+}
+
+#-------------------------------------------------------------------------
+
+sub lcs {
+  scalar reverse lcp( map { scalar reverse } @_ );
+}
+
+#-------------------------------------------------------------------------
+
 sub longest_common_prefix {
   my $prefix = shift;
   for (@_) {
     chop $prefix while (! /^\Q$prefix\E/);
   }
   return $prefix;
+}
+
+#-------------------------------------------------------------------------
+# this does not work
+
+sub longest_common_suffix {
+  my $suffix = shift;
+  for (@_) {
+    chop $suffix while (! /\Q$suffix\E$/);
+  }
+  return $suffix;
 }
 
 #-------------------------------------------------------------------------
@@ -177,11 +207,13 @@ sub setOptions {
 
   @Options = (
     {OPT=>"help",    VAR=>\&usage,             DESC=>"This help"},
-    {OPT=>"v|verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
-    {OPT=>"g|genes=s",  VAR=>\$gfn, DEFAULT=>'', DESC=>"File name of query gene(s) - ok to mix DNA and PROT"},
-    {OPT=>"d|dir=s",  VAR=>\$dir, DEFAULT=>'', DESC=>"Folder to put results in"},
-    {OPT=>"e|evalue=f",  VAR=>\$evalue, DEFAULT=>1E-6, DESC=>"e-value cutoff for BLAST similarity"},
-    {OPT=>"t|tophit!",  VAR=>\$tophit, DEFAULT=>0, DESC=>"Only include top hit per sample"},
+    {OPT=>"verbose!",  VAR=>\$verbose, DEFAULT=>0, DESC=>"Verbose output"},
+    {OPT=>"genes=s",  VAR=>\$gfn, DEFAULT=>'', DESC=>"File name of query gene(s) - ok to mix DNA and PROT"},
+    {OPT=>"dir=s",  VAR=>\$dir, DEFAULT=>'', DESC=>"Folder to put results in"},
+    {OPT=>"evalue=f",  VAR=>\$evalue, DEFAULT=>1E-6, DESC=>"e-value cutoff for BLAST similarity"},
+    {OPT=>"tophit!",  VAR=>\$tophit, DEFAULT=>0, DESC=>"Only include top hit per sample"},
+    {OPT=>"origname!",  VAR=>\$origname, DEFAULT=>0, DESC=>"Keep original input file name"},
+    {OPT=>"cpus=i",  VAR=>\$cpus, DEFAULT=>1, DESC=>"Number of threads to use"},
   );
 
   #(!@ARGV) && (usage());
